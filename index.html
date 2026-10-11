@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>GTA handling.dat tuner</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{font:15px system-ui,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;background:#16181d;color:#e6e6e6}
+h1{font-size:20px}h2{font-size:15px;margin:0 0 8px;color:#8cc8ff}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.box{background:#20232b;border-radius:8px;padding:12px}
+label{display:flex;justify-content:space-between;align-items:center;margin:5px 0;gap:8px}
+input[type=number]{width:80px;background:#111;color:#fff;border:1px solid #444;border-radius:4px;padding:3px}
+#drop{border:2px dashed #555;border-radius:8px;padding:22px;text-align:center;margin:14px 0;cursor:pointer}
+#drop.on{border-color:#8cc8ff}
+button{background:#2f7de1;color:#fff;border:0;border-radius:6px;padding:9px 16px;font-size:15px;cursor:pointer}
+button:disabled{opacity:.4}pre{background:#0d0f13;padding:10px;border-radius:6px;white-space:pre-wrap;max-height:260px;overflow:auto}
+small{color:#999}
+</style></head><body>
+<h1>GTA handling.dat tuner</h1>
+<small>Runs fully in your browser. Nothing is uploaded and nothing needs installing.</small>
+<div id="drop">Drop <b>handling.dat</b> here or click to choose<input id="file" type="file" hidden></div>
+<div class="row">
+<div class="box"><h2>Cars</h2>
+<label>CoM Z shift<input id="c_com" type="number" step="0.01" value="-0.22"></label>
+<label>Brake bias (blank = keep)<input id="c_bb" type="number" step="0.01" value="0.38"></label>
+<label>Traction ×<input id="c_tr" type="number" step="0.05" value="1.30"></label>
+<label>Susp. force ×<input id="c_sf" type="number" step="0.05" value="1.55"></label>
+<label>Susp. comp damp ×<input id="c_sc" type="number" step="0.05" value="1.50"></label>
+<label>Susp. rebound damp ×<input id="c_sr" type="number" step="0.05" value="1.40"></label>
+<label>Upper limit (blank = keep)<input id="c_su" type="number" step="0.01" value="0.12"></label>
+<label>Lower limit (blank = keep)<input id="c_sl" type="number" step="0.01" value="-0.12"></label>
+</div>
+<div class="box"><h2>Bikes / bicycles</h2>
+<label>CoM Z shift<input id="b_com" type="number" step="0.01" value="-0.05"></label>
+<label>Brake bias (blank = keep)<input id="b_bb" type="number" step="0.01" value=""></label>
+<label>Traction ×<input id="b_tr" type="number" step="0.05" value="1.15"></label>
+<label>Susp. force ×<input id="b_sf" type="number" step="0.05" value="1.00"></label>
+<label>Susp. comp damp ×<input id="b_sc" type="number" step="0.05" value="1.00"></label>
+<label>Susp. rebound damp ×<input id="b_sr" type="number" step="0.05" value="1.00"></label>
+<label>Lean COM × (! lines)<input id="b_lean" type="number" step="0.05" value="1.00"></label>
+<small>Set everything to 0 shift / 1.00 to leave bikes untouched. Test in-game and adjust.</small>
+</div></div>
+<p><button id="go" disabled>Convert &amp; download</button></p>
+<pre id="log">No file loaded.</pre>
+<script>
+const FALLBACK_BIKES=new Set("ANGEL BATI BATI2 DAEMON DIABO DOUBLE DOUBLE2 HAKUCH HAKUCH2 HEXER INNOV LYCAN NIGHTBL REVENANT WAYFARER WOLFS BOBBER FAGGIO HELLFURY NRG900 PCJ SANCHEZ ZOMBIE BMX BICYCLE SCORCHER CRUISER TRIBIKE FIXTER".split(" "));
+const NEVER=new Set(["CABLECAR","SUBWAY"]); // trains: never touch
+const v=id=>{const e=document.getElementById(id);if(!e)return null;const s=e.value.trim();return s===""?null:parseFloat(s)};
+const r2=x=>String(Math.round(x*100)/100);
+const num=s=>{const n=parseFloat(s);if(isNaN(n))throw 0;return n};
+
+function convert(text,o){
+  const lines=text.split(/\r?\n/), log=[];
+  // pass 1: names that have a '!' bike line are bikes, whatever section they're in
+  const bikes=new Set(FALLBACK_BIKES);
+  for(const l of lines)if(l.startsWith("!")){const p=l.split(/\s+/);if(p[1])bikes.add(p[1].toUpperCase())}
+  let section="cars",cnt={cars:0,bikes:0,lean:0},skipped=[];
+  const out=lines.map(line=>{
+    const raw=line.trim();
+    const m=raw.match(/^;\s*-{3,}\s*([A-Za-z]+)/);
+    if(m){section=m[1].toLowerCase();return line}
+    if(!raw||/^[;%\/#]/.test(raw))return line;
+    const p=raw.split(/\s+/);
+    if(raw[0]==="!"){
+      if(p.length<17||o.b.lean===1)return line;
+      try{ // cols: [2]LeanFwdCOM [4]LeanBakCOM
+        p[2]=r2(num(p[2])*o.b.lean);p[4]=r2(num(p[4])*o.b.lean);cnt.lean++;
+        return "!\t"+p[1]+"\t\t"+p.slice(2).join("\t");
+      }catch(e){return line}
+    }
+    if(p.length<30)return line;
+    const name=p[0].toUpperCase();
+    if(NEVER.has(name)){skipped.push(name);return line}
+    const isBike=bikes.has(name)||section==="bikes";
+    if(!isBike&&section!=="cars"){if(!skipped.includes(name))skipped.push(name);return line} // boats/planes/helis
+    const c=isBike?o.b:o.c;
+    try{
+      p[6]=r2(num(p[6])+c.com);
+      if(c.bb!==null)p[13]=r2(c.bb);
+      if(isBike){p[16]=r2(num(p[16])*c.tr);p[17]=r2(num(p[17])*c.tr)}   // Wc+ / Wc- only, never the lateral angle (col 18)
+      else{p[17]=r2(num(p[17])*c.tr);p[18]=r2(num(p[18])*c.tr)}         // kept identical to the original script's car result
+      p[21]=r2(num(p[21])*c.sf);p[22]=r2(num(p[22])*c.sc);p[23]=r2(num(p[23])*c.sr);
+      if(c.su!==null)p[24]=r2(c.su);if(c.sl!==null)p[25]=r2(c.sl);
+      isBike?cnt.bikes++:cnt.cars++;
+      return p.join("\t");
+    }catch(e){return line}
+  });
+  log.push(`Cars changed: ${cnt.cars}`,`Bikes changed: ${cnt.bikes}`,`Bike '!' lean lines changed: ${cnt.lean}`,
+           `Left untouched (boats/planes/helis/trains): ${skipped.length}`);
+  return {text:out.join("\r\n"),log};
+}
+
+let src="";
+const $=id=>document.getElementById(id),drop=$("drop"),file=$("file");
+function load(f){const rd=new FileReader();rd.onload=()=>{src=rd.result;$("go").disabled=false;$("log").textContent=`Loaded ${f.name} (${src.split(/\r?\n/).length} lines)`};rd.readAsText(f)}
+drop.onclick=()=>file.click();file.onchange=()=>file.files[0]&&load(file.files[0]);
+drop.ondragover=e=>{e.preventDefault();drop.classList.add("on")};drop.ondragleave=()=>drop.classList.remove("on");
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove("on");load(e.dataTransfer.files[0])};
+$("go").onclick=()=>{try{
+  const g=p=>({com:v(p+"com")??0,bb:v(p+"bb"),tr:v(p+"tr")??1,sf:v(p+"sf")??1,sc:v(p+"sc")??1,sr:v(p+"sr")??1,su:v(p+"su"),sl:v(p+"sl"),lean:v(p+"lean")??1});
+  const res=convert(src,{c:g("c_"),b:g("b_")});
+  $("log").textContent=res.log.join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([res.text],{type:"text/plain"}));
+  a.download="handling_modified.dat";document.body.appendChild(a);a.click();setTimeout(()=>{a.remove();URL.revokeObjectURL(a.href)},1000);
+}catch(e){$("log").textContent="Error: "+e.message}};
+if(typeof module!=="undefined")module.exports={convert};
+</script></body></html>
