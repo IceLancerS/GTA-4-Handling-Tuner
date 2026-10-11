@@ -14,7 +14,9 @@ A simple browser tool for tweaking GTA IV's `handling.dat`. No install, no Pytho
 6. Rename it to `handling.dat` and replace the original in your game files.
 
 Grand Theft Auto IV\common\data\handling.dat
+
 Grand Theft Auto IV\TBoGT\common\data\handling.dat
+
 Grand Theft Auto IV\TLAD\common\data\handling.dat
 
 Your file never leaves your computer. Everything runs locally in your browser.
